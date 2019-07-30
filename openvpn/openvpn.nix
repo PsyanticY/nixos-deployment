@@ -1,7 +1,7 @@
-{ config, lib,  pkgs, resources, name, ... }:
+{ config, lib,  pkgs, resources, ... }:
 let
   inherit (pkgs) openvpn;
-  vpnConfig = pkgs.writeText "openvpn-config-${name}" 
+  vpnConfig = pkgs.writeText "openvpn-config" 
     ''
       # Certs
 
