@@ -1,6 +1,6 @@
 { config, lib,  pkgs, resources, name, ... }:
 {
-  environment.systemPackages = with pkgs; [ vim tree stress awscli ansible_2_9 	ansible-lint ];
+  environment.systemPackages = with pkgs; [ vim tree stress awscli ansible_2_9 ansible-lint ];
   deployment.keys."id_rsa.pub".text = builtins.readFile <creds/playground/id_rsa.pub>;
   deployment.keys."id_rsa".text = builtins.readFile <creds/playground/id_rsa>;
   systemd.services."ssh-keys" =
