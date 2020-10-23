@@ -1,5 +1,7 @@
 { config, lib,  pkgs, resources, ... }:
+with lib;
 let
+  cfg = config.openVpn;
   inherit (pkgs) openvpn;
   vpnConfig = pkgs.writeText "openvpn-config" 
     ''
@@ -15,15 +17,17 @@ let
       ## "dev tun" will create a routed IP tunnel
       dev tun
       port 1194
-      proto tcp
+      proto ${cfg.mode}
       server 10.0.2.0 255.255.255.0
-      
+      ifconfig-pool-persist /var/log/openvpn/ipp.txt
+ 
       keepalive 10 120
       comp-lzo
       persist-key
       persist-tun
       
       # Logging
+      status /var/log/openvpn/openvpn-status.log
       log-append /var/log/openvpn/openvpn.log
       verb 4
       mute 5
@@ -51,32 +55,67 @@ let
       ### ...
       push "route 52.80.0.0 255.248.0.0 ";
       push "route 99.80.0.0 255.54.0.0 ";
+      ${cfg.routes}
 
     '';
     
 in
 {
-  environment.systemPackages = [ openvpn ];
+  options = {
+    openVpn = {
+      enable = mkEnableOption "openvpn";
 
-  boot.kernelModules = [ "tun" ];
-  
-  systemd.services.openvpn = {
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network.target" ];
-    preStart = ''
-      if test ! -d /var/log/openvpn
-      then
-        mkdir -p /var/log/openvpn -m 0750
-      fi
-    '';
-    serviceConfig = {
-      ExecStart = "@${openvpn}/sbin/openvpn openvpn --suppress-timestamps --config ${vpnConfig}";
-      Restart = "on-failure";
-      TimeoutStartSec = "infinity";
+      mode = mkOption {
+        default = "tcp";
+        type = with types; str;
+        description = ''
+          Whether to use tcp or udp mode.
+        '';
+      };
+      routes = mkOption {
+        default = "";
+        type = with types; str;
+        description = ''
+          pushed routes to add to the open vpn config.
+        '';
+      };
     };
-    path = [ pkgs.iptables pkgs.iproute pkgs.nettools ];
   };
-  networking.firewall.allowedTCPPorts = [ 1194 ];
+
+  config = mkIf cfg.enable {
+
+
+    environment.systemPackages = [ openvpn ];
+
+    boot.kernelModules = [ "tun" ];
+  
+    systemd.services.openvpn = {
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      preStart = ''
+        if test ! -d /var/log/openvpn
+        then
+          mkdir -p /var/log/openvpn -m 0750
+        fi
+      '';
+      serviceConfig = {
+        ExecStart = "@${openvpn}/sbin/openvpn openvpn --suppress-timestamps --config ${vpnConfig}";
+        Restart = "on-failure";
+        TimeoutStartSec = "infinity";
+      };
+      path = [ pkgs.iptables pkgs.iproute pkgs.nettools ];
+    };
+    
+    networking.firewall.allowedTCPPorts = [ 1194 ];
+    networking.firewall.allowedUDPPorts = [ 1194 ];
+    boot.kernel.sysctl."net.inet.ip.fastforwarding" = 1;
+    boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+    networking.firewall.enable = true;
+    networking.firewall.extraCommands = ''
+      iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+      iptables -I FORWARD -i tun0 -o eth0 -s 10.0.2.0/24 -m conntrack --ctstate NEW -j ACCEPT
+      iptables -t nat -A POSTROUTING -s 10.0.2.0/24 -o eth0 -j MASQUERADE
+    '';
   deployment.keys = {
     "ca.crt".text = builtins.readFile <creds/openvpn/ca.crt>;
     "dh.pem".text = builtins.readFile <creds/openvpn/dh.pem>;
@@ -133,6 +172,9 @@ in
     [pam]
     [ssh]
   '';
-  
-}
 
+
+
+  };
+}
+    
