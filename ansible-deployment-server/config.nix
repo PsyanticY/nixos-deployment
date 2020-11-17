@@ -22,7 +22,38 @@
         RemainAfterExit = true;
       };
     };
-    # to do: 
-    # add .ansible.cfg to home folder of ansible
-    # change the inventory location and create it somewhere accessible by ansible user
+  systemd.services."ansible-setup" =
+    { description = "setting up some stuff for ansible";
+      wantedBy = [ "multi-user.target" ];
+      script =
+        ''
+           if [ ! -e /home/ansible/.ansible.cfg ]; then
+             echo "hello"
+             mkdir -p /data/home/ansible/.ansible
+             chown ansible:ansible /data/home/ansible/.ansible
+             curl https://raw.githubusercontent.com/ansible/ansible/devel/examples/ansible.cfg --output /tmp/.ansible.cfg
+             temp_checksum=$(sha256sum /tmp/.ansible.cfg | cut -d " " -f 1 )
+             if [ "f186f1018832fd926722c7dc4138dbcba7bb7398a361e826a641bd9312789d70" == "$temp_checksum" ]; then
+               cp /tmp/.ansible.cfg /home/ansible/.ansible.cfg
+               sed -i 's/#inventory       = \/etc\/ansible\/hosts/inventory       = \/home\/ansible\/.ansible\/hosts/g' /home/ansible/.ansible.cfg
+               chown ansible:ansible /data/home/ansible/.ansible.cfg
+               chmod 600 /data/home/ansible/.ansible.cfg
+             else
+               rm -rf /tmp/.ansible.cfg
+               echo "WARNING: cheksum do not match"
+               exit 1
+             fi
+             touch /home/ansible/.ansible/hosts
+             chmod 600 /home/ansible/.ansible/hosts
+             chown ansible:ansible /home/ansible/.ansible/hosts
+             echo "INFO: Ansible setup is done" 
+           fi
+        '';
+      unitConfig.RequiresMountsFor = [ "/data" ];
+      path = with pkgs; [ curl ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+    };
 }
