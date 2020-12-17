@@ -106,16 +106,22 @@ in
       path = [ pkgs.iptables pkgs.iproute pkgs.nettools ];
     };
     
-    networking.firewall.allowedTCPPorts = [ 1194 ];
-    networking.firewall.allowedUDPPorts = [ 1194 ];
-    boot.kernel.sysctl."net.inet.ip.fastforwarding" = 1;
-    boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-    networking.firewall.enable = true;
-    networking.firewall.extraCommands = ''
-      iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-      iptables -I FORWARD -i tun0 -o eth0 -s 10.0.2.0/24 -m conntrack --ctstate NEW -j ACCEPT
-      iptables -t nat -A POSTROUTING -s 10.0.2.0/24 -o eth0 -j MASQUERADE
-    '';
+  networking.nat.externalInterface = "ens5";
+  networking.nat.enable = true;
+  networking.nat.internalIPs = [ "10.0.2.0/24" ];
+  networking.firewall.enable = true;
+  networking.firewall.rejectPackets = false;
+  networking.firewall.trustedInterfaces = ["ens5"];
+  networking.firewall.allowedTCPPorts = [ 1194 ];
+  networking.firewall.allowedUDPPorts = [ 1194 ];
+  networking.firewall.checkReversePath = false;
+  boot.kernel.sysctl."net.inet.ip.fastforwarding" = 1;
+  boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+  networking.firewall.extraCommands = ''
+    #iptables -I nixos-fw -m conntrack --ctstate RELATED,ESTABLISHED -j nixos-fw-accept
+    iptables -I nixos-fw -i tun0 -o ens5 -s 10.0.2.0/24 -m conntrack --ctstate NEW -j nixos-fw-accept
+  '';
+  networking.firewall.allowedTCPPorts = [ 1194 ];
   deployment.keys = {
     "ca.crt".text = builtins.readFile <creds/openvpn/ca.crt>;
     "dh.pem".text = builtins.readFile <creds/openvpn/dh.pem>;
